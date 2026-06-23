@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "skills": {
+    "impeccable": {
+      "source": "pbakaus/impeccable",
+      "sourceType": "github",
+      "skillPath": ".agents/skills/impeccable/SKILL.md",
+      "computedHash": "ff24732ed5dfe28d4415db0c86c0ef4406893b551cf837529e01ec1d1fefcb32"
+    },
+    "nodejs-express-server": {
+      "source": "aj-geddes/useful-ai-prompts",
+      "sourceType": "github",
+      "skillPath": "skills/nodejs-express-server/SKILL.md",
+      "computedHash": "8a7fe50351131f99b7bc7750bb4be6e7cbd7919b3b346c8fc7f857fb1ecad059"
+    }
+  }
+}

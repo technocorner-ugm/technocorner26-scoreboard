@@ -24,7 +24,6 @@ import {
   ROOM_IDS,
   ROOM_LABELS,
   TRANSPORTER_ROUNDS,
-  applyTimerAction,
   calculatePenaltyScore,
   calculateTransporterScore,
   cloneRoom,
@@ -47,7 +46,9 @@ import {
   type ScoreboardState,
   type TeamState,
   type TimerAction,
+  type TimerCommand,
   type TimerState,
+  type TimerTarget,
   type TransporterItemKey,
   type TransporterMode,
 } from "@/lib/scoreboard";
@@ -106,7 +107,7 @@ export default function ScoreboardClient() {
         const data = (await response.json()) as ScoreboardState;
 
         if (active) {
-          setBoard(data);
+          setBoard(localizeScoreboardState(data));
           setApiError(null);
         }
       } catch {
@@ -129,7 +130,7 @@ export default function ScoreboardClient() {
 
     source.addEventListener("scoreboard", (event) => {
       const message = event as MessageEvent<string>;
-      setBoard(JSON.parse(message.data) as ScoreboardState);
+      setBoard(localizeScoreboardState(JSON.parse(message.data) as ScoreboardState));
       setApiError(null);
     });
 
@@ -156,22 +157,23 @@ export default function ScoreboardClient() {
   const targetRoom: RoomTarget = applyToAllRooms ? "all" : selectedRoom;
 
   async function commitRoom(nextRoom: RoomState, target: RoomTarget = targetRoom) {
+    const committedRoom = prepareRoomForCommit(nextRoom);
     setApiError(null);
     setPending(true);
-    setBoard((previous) => optimisticBoard(previous, target, nextRoom));
+    setBoard((previous) => optimisticBoard(previous, target, committedRoom));
 
     try {
       const response = await fetch("/api/scoreboard", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: target, state: nextRoom }),
+        body: JSON.stringify({ room: target, state: committedRoom }),
       });
 
       if (!response.ok) {
         throw new Error("PATCH failed");
       }
 
-      setBoard((await response.json()) as ScoreboardState);
+      setBoard(localizeScoreboardState((await response.json()) as ScoreboardState));
     } catch {
       setApiError("Update belum terkirim ke server. Cek dev server/API.");
     } finally {
@@ -190,7 +192,7 @@ export default function ScoreboardClient() {
         throw new Error("DELETE failed");
       }
 
-      setBoard((await response.json()) as ScoreboardState);
+      setBoard(localizeScoreboardState((await response.json()) as ScoreboardState));
     } catch {
       setApiError("Reset gagal dikirim ke server.");
     } finally {
@@ -201,6 +203,35 @@ export default function ScoreboardClient() {
   function updateCurrentRoom(updater: (room: RoomState) => RoomState) {
     if (!currentRoom) return;
     commitRoom(updater(cloneRoom(currentRoom)));
+  }
+
+  async function commandTimer(target: TimerTarget, action: TimerAction) {
+    const command: TimerCommand = {
+      room: targetRoom,
+      target,
+      action,
+    };
+
+    setApiError(null);
+    setPending(true);
+
+    try {
+      const response = await fetch("/api/scoreboard/timer", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(command),
+      });
+
+      if (!response.ok) {
+        throw new Error("Timer command failed");
+      }
+
+      setBoard(localizeScoreboardState((await response.json()) as ScoreboardState));
+    } catch {
+      setApiError("Aksi timer belum terkirim ke server. Cek dev server/API.");
+    } finally {
+      setPending(false);
+    }
   }
 
   if (!currentRoom) {
@@ -309,12 +340,7 @@ export default function ScoreboardClient() {
             label="Timer Utama"
             timer={currentRoom.timer}
             disabled={currentRoom.competition === "soccerbot-penalty"}
-            onTimerAction={(action) =>
-              updateCurrentRoom((room) => ({
-                ...room,
-                timer: applyTimerAction(room.timer, action),
-              }))
-            }
+            onTimerAction={(action) => commandTimer("main", action)}
             onDurationChange={(durationMs) =>
               updateCurrentRoom((room) => ({
                 ...room,
@@ -368,6 +394,7 @@ export default function ScoreboardClient() {
               room={currentRoom}
               teamIndex={teamIndex}
               onChange={updateCurrentRoom}
+              onTimerAction={commandTimer}
             />
           ))}
         </section>
@@ -512,10 +539,12 @@ function TeamEditor({
   room,
   teamIndex,
   onChange,
+  onTimerAction,
 }: {
   room: RoomState;
   teamIndex: TeamIndex;
   onChange: (updater: (room: RoomState) => RoomState) => void;
+  onTimerAction: (target: TimerTarget, action: TimerAction) => void;
 }) {
   const team = room.teams[teamIndex];
   const isTransporter = room.competition === "transporter";
@@ -580,9 +609,7 @@ function TeamEditor({
           label="Timeout"
           timer={room.timeouts[teamIndex]}
           compact
-          onTimerAction={(action) =>
-            onChange((roomState) => updateTimeoutTimer(roomState, teamIndex, action))
-          }
+          onTimerAction={(action) => onTimerAction(teamIndex === 0 ? "timeout-0" : "timeout-1", action)}
           onDurationChange={(durationMs) =>
             onChange((roomState) => setTimeoutDuration(roomState, teamIndex, durationMs))
           }
@@ -1003,12 +1030,6 @@ function updatePenaltyMark(
   });
 }
 
-function updateTimeoutTimer(room: RoomState, timeoutIndex: 0 | 1, action: TimerAction) {
-  const next = cloneRoom(room);
-  next.timeouts[timeoutIndex] = applyTimerAction(next.timeouts[timeoutIndex], action);
-  return next;
-}
-
 function setTimeoutDuration(room: RoomState, timeoutIndex: 0 | 1, durationMs: number) {
   const next = cloneRoom(room);
   next.timeouts[timeoutIndex] = setTimerDuration(next.timeouts[timeoutIndex], durationMs);
@@ -1031,15 +1052,74 @@ function optimisticBoard(
 
   if (target === "all") {
     ROOM_IDS.forEach((roomId) => {
-      rooms[roomId] = cloneRoom(nextRoom, roomId);
+      rooms[roomId] = prepareRoomForCommit(cloneRoom(nextRoom, roomId));
     });
   } else {
-    rooms[target] = cloneRoom(nextRoom, target);
+    rooms[target] = prepareRoomForCommit(cloneRoom(nextRoom, target));
   }
 
   return {
     rooms,
     version: base.version + 1,
     updatedAt: Date.now(),
+  };
+}
+
+function prepareRoomForCommit(room: RoomState) {
+  const next = cloneRoom(room);
+  next.timer = resolveAndReanchorTimer(next.timer);
+  next.timeouts = [
+    resolveAndReanchorTimer(next.timeouts[0]),
+    resolveAndReanchorTimer(next.timeouts[1]),
+  ];
+  return next;
+}
+
+function resolveAndReanchorTimer(timer: TimerState) {
+  const liveTimer = resolveTimer(timer);
+
+  return {
+    ...liveTimer,
+    startedAt: liveTimer.running ? Date.now() : null,
+  };
+}
+
+function localizeScoreboardState(state: ScoreboardState) {
+  const localNow = Date.now();
+  const serverNow = state.updatedAt;
+
+  return {
+    ...state,
+    rooms: ROOM_IDS.reduce(
+      (rooms, roomId) => ({
+        ...rooms,
+        [roomId]: localizeRoomTimers(state.rooms[roomId], serverNow, localNow),
+      }),
+      {} as ScoreboardState["rooms"]
+    ),
+  };
+}
+
+function localizeRoomTimers(room: RoomState, serverNow: number, localNow: number) {
+  return {
+    ...room,
+    timer: localizeTimer(room.timer, serverNow, localNow),
+    timeouts: [
+      localizeTimer(room.timeouts[0], serverNow, localNow),
+      localizeTimer(room.timeouts[1], serverNow, localNow),
+    ] as [TimerState, TimerState],
+  };
+}
+
+function localizeTimer(timer: TimerState, serverNow: number, localNow: number) {
+  if (!timer.running || timer.startedAt === null) {
+    return timer;
+  }
+
+  const elapsedAtResponse = Math.max(0, serverNow - timer.startedAt);
+
+  return {
+    ...timer,
+    startedAt: localNow - elapsedAtResponse,
   };
 }

@@ -34,6 +34,7 @@ import {
   getTeamDisplayScore,
   getTransporterRoundConfig,
   hasTimeoutTimers,
+  isTransporterHeadToHeadRound,
   parseClock,
   resolveTimer,
   setTimerDuration,
@@ -56,7 +57,7 @@ import {
 const TEAM_INDEXES = [0, 1] as const;
 type TeamIndex = 0 | 1 | 2 | 3;
 const REGULAR_ROUNDS: Record<CompetitionId, string[]> = {
-  "line-follower": ["Penyisihan", "Final"],
+  "line-follower": ["Penyisihan", "32 Besar", "16 Besar", "8 Besar", "Final"],
   soccerbot: ["Babak Penyisihan", "Knockout", "Final"],
   "soccerbot-penalty": ["Penalty"],
   "sumobot-rc": ["Babak Penyisihan", "Knockout", "Final"],
@@ -411,6 +412,9 @@ function ScoreboardStage({ room }: { room: RoomState }) {
   const activeTeamIndexes = getScoreTeamIndexes(room);
   const transporterConfig =
     room.competition === "transporter" ? getTransporterRoundConfig(room.round) : null;
+  const showVersus =
+    activeTeamIndexes.length === 2 &&
+    (room.competition !== "transporter" || isTransporterHeadToHeadRound(room.round));
 
   if (room.competition === "line-follower") {
     return <LineFollowerStage room={room} />;
@@ -436,7 +440,7 @@ function ScoreboardStage({ room }: { room: RoomState }) {
       <div className={activeTeamIndexes.length === 1 ? "score-duel is-single" : "score-duel"}>
         {activeTeamIndexes.map((teamIndex) => (
           <article className={`team-score team-${teamIndex + 1}`} key={teamIndex}>
-            <label>{teamIndex === 0 ? "Team Left" : "Team Right"}</label>
+            <label>{getStageTeamLabel(room, teamIndex)}</label>
             <h3>{room.teams[teamIndex].name}</h3>
             <strong>{getTeamDisplayScore(room, teamIndex)}</strong>
             {room.competition === "soccerbot-penalty" ? (
@@ -445,14 +449,14 @@ function ScoreboardStage({ room }: { room: RoomState }) {
             {room.competition === "transporter" ? (
               <TransporterMini team={room.teams[teamIndex]} round={room.round} />
             ) : null}
-            {hasTimeoutTimers(room.competition) ? (
+            {hasTimeoutTimers(room.competition, room.round) ? (
               <TeamTimeoutReadout timer={room.timeouts[teamIndex]} />
             ) : null}
           </article>
         ))}
       </div>
 
-      {activeTeamIndexes.length === 2 ? <div className="versus-mark">VS</div> : null}
+      {showVersus ? <div className="versus-mark">VS</div> : null}
 
       <footer className="stage-footer">
         {room.competition !== "soccerbot-penalty" ? (
@@ -518,9 +522,15 @@ function LineFollowerStage({ room }: { room: RoomState }) {
         {matches.map(([leftIndex, rightIndex], matchIndex) => (
           <article className="lf-match" key={matchIndex}>
             <span>Match {matchIndex + 1}</span>
-            <h3>{room.teams[leftIndex].name}</h3>
+            <div className="lf-team is-red">
+              <small>Merah</small>
+              <h3>{room.teams[leftIndex].name}</h3>
+            </div>
             <strong>VS</strong>
-            <h3>{room.teams[rightIndex].name}</h3>
+            <div className="lf-team is-blue">
+              <small>Biru</small>
+              <h3>{room.teams[rightIndex].name}</h3>
+            </div>
           </article>
         ))}
       </div>
@@ -550,9 +560,16 @@ function TeamEditor({
   const isTransporter = room.competition === "transporter";
   const isPenalty = room.competition === "soccerbot-penalty";
   const isLineFollower = room.competition === "line-follower";
+  const lineFollowerSideClass = isLineFollower
+    ? teamIndex % 2 === 0
+      ? "is-lf-red"
+      : "is-lf-blue"
+    : "";
 
   return (
-    <article className={`control-panel team-editor team-${teamIndex + 1}`}>
+    <article
+      className={`control-panel team-editor team-${teamIndex + 1} ${lineFollowerSideClass}`}
+    >
       <PanelTitle title={getTeamEditorTitle(room, teamIndex)} icon={<Users size={18} />} />
 
       <label className="field-stack">
@@ -604,7 +621,7 @@ function TeamEditor({
         </div>
       ) : null}
 
-      {hasTimeoutTimers(room.competition) && isPrimaryTeamIndex(teamIndex) ? (
+      {hasTimeoutTimers(room.competition, room.round) && isPrimaryTeamIndex(teamIndex) ? (
         <TimerEditor
           label="Timeout"
           timer={room.timeouts[teamIndex]}
@@ -622,11 +639,18 @@ function TeamEditor({
 function getTeamEditorTitle(room: RoomState, teamIndex: TeamIndex) {
   if (room.competition === "line-follower") {
     return [
-      "Match 1 Kiri",
-      "Match 1 Kanan",
-      "Match 2 Kiri",
-      "Match 2 Kanan",
+      "Match 1 Merah",
+      "Match 1 Biru",
+      "Match 2 Merah",
+      "Match 2 Biru",
     ][teamIndex];
+  }
+
+  if (
+    room.competition === "transporter" &&
+    !isTransporterHeadToHeadRound(room.round)
+  ) {
+    return teamIndex === 0 ? "Peserta 1" : "Peserta 2";
   }
 
   return teamIndex === 0 ? "Tim Kiri" : "Tim Kanan";
@@ -771,6 +795,10 @@ function RoundEditor({
         value={room.round}
         onChange={(event) =>
           onChange((roomState) => {
+            const timeoutWasEnabled = hasTimeoutTimers(
+              roomState.competition,
+              roomState.round
+            );
             const next = {
               ...roomState,
               round: event.target.value,
@@ -778,6 +806,15 @@ function RoundEditor({
 
             if (next.competition === "transporter") {
               next.timer = createTimer(getTransporterRoundConfig(next.round).durationMs);
+            }
+
+            const timeoutIsEnabled = hasTimeoutTimers(next.competition, next.round);
+
+            if (!timeoutIsEnabled) {
+              next.timeouts = [createTimer(0), createTimer(0)];
+            } else if (!timeoutWasEnabled) {
+              const timeoutMs = getCompetition(next.competition).defaultTimeoutMs;
+              next.timeouts = [createTimer(timeoutMs), createTimer(timeoutMs)];
             }
 
             return next;
@@ -961,16 +998,27 @@ function getScoreTeamIndexes(room: RoomState) {
   return TEAM_INDEXES;
 }
 
+function getStageTeamLabel(room: RoomState, teamIndex: 0 | 1) {
+  if (
+    room.competition === "transporter" &&
+    !isTransporterHeadToHeadRound(room.round)
+  ) {
+    return `Peserta ${teamIndex + 1}`;
+  }
+
+  return teamIndex === 0 ? "Team Left" : "Team Right";
+}
+
 function changeCompetition(room: RoomState, competitionId: CompetitionId) {
   const competition = getCompetition(competitionId);
   const next = cloneRoom(room);
   next.competition = competition.id;
   next.round = competition.defaultRound;
   next.timer = createTimer(competition.defaultTimerMs);
-  next.timeouts = [
-    createTimer(competition.defaultTimeoutMs),
-    createTimer(competition.defaultTimeoutMs),
-  ];
+  const timeoutMs = hasTimeoutTimers(competition.id, competition.defaultRound)
+    ? competition.defaultTimeoutMs
+    : 0;
+  next.timeouts = [createTimer(timeoutMs), createTimer(timeoutMs)];
 
   if (competition.id === "transporter") {
     next.timer = createTimer(getTransporterRoundConfig(competition.defaultRound).durationMs);

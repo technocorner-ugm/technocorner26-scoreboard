@@ -45,7 +45,7 @@ export const COMPETITIONS = [
     shortLabel: "RC",
     asset: "/assets/logo/Sumo.webp",
     defaultRound: "Babak Penyisihan",
-    defaultTimerMs: 270000,
+    defaultTimerMs: 180000,
     defaultTimeoutMs: 45000,
     scoring: "regular",
   },
@@ -55,7 +55,7 @@ export const COMPETITIONS = [
     shortLabel: "Auto",
     asset: "/assets/logo/Sumo.webp",
     defaultRound: "Babak Penyisihan",
-    defaultTimerMs: 270000,
+    defaultTimerMs: 180000,
     defaultTimeoutMs: 45000,
     scoring: "regular",
   },
@@ -302,8 +302,24 @@ export function getCompetitionTimeoutMs(id: CompetitionId) {
   return getCompetition(id).defaultTimeoutMs;
 }
 
-export function hasTimeoutTimers(id: CompetitionId) {
-  return getCompetitionTimeoutMs(id) > 0;
+export function hasTimeoutTimers(id: CompetitionId, round?: string) {
+  if (getCompetitionTimeoutMs(id) <= 0) {
+    return false;
+  }
+
+  if (
+    (id === "sumobot-rc" || id === "sumobot-auto") &&
+    isSumobotGroupRound(round)
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
+export function isTransporterHeadToHeadRound(round: string) {
+  const normalizedRound = getTransporterRoundConfig(round).round;
+  return normalizedRound !== "Penyisihan" && normalizedRound !== "32 Besar";
 }
 
 export function getTransporterRoundConfig(round: string) {
@@ -430,7 +446,9 @@ export function sanitizeRoomState(
     base.timer = options.incoming ? sanitizeIncomingTimer(base.timer) : normalizeTimer(base.timer);
   }
 
-  const timeoutMs = getCompetitionTimeoutMs(base.competition);
+  const timeoutMs = hasTimeoutTimers(base.competition, base.round)
+    ? getCompetitionTimeoutMs(base.competition)
+    : 0;
   base.timeouts = [
     timeoutMs > 0
       ? options.incoming
@@ -457,6 +475,16 @@ function sanitizeIncomingTimer(timer: TimerState): TimerState {
     running: timer.running && remainingMs > 0,
     startedAt: timer.running && remainingMs > 0 ? Date.now() : null,
   };
+}
+
+function isSumobotGroupRound(round?: string) {
+  const normalizedRound = round?.trim().toLowerCase();
+
+  return (
+    normalizedRound === "penyisihan" ||
+    normalizedRound === "babak penyisihan" ||
+    normalizedRound === "babak grup"
+  );
 }
 
 function normalizeTeam(team: TeamState, index: 0 | 1 | 2 | 3): TeamState {

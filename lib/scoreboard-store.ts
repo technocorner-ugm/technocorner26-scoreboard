@@ -2,8 +2,13 @@ import {
   ROOM_IDS,
   type RoomId,
   type RoomTarget,
+  type RoomState,
   type ScoreboardPatch,
   type ScoreboardState,
+  type TimerAction,
+  type TimerCommand,
+  type TimerTarget,
+  applyTimerAction,
   cloneRoom,
   createTimer,
   createScoreboardState,
@@ -44,6 +49,7 @@ class ScoreboardStore {
     this.state = {
       ...this.state,
       rooms,
+      updatedAt: now,
     };
 
     return this.state;
@@ -54,18 +60,41 @@ class ScoreboardStore {
 
     if (payload.room === "all") {
       ROOM_IDS.forEach((roomId) => {
-        nextState.rooms[roomId] = sanitizeRoomState(cloneRoom(payload.state, roomId), roomId);
+        nextState.rooms[roomId] = sanitizeRoomState(cloneRoom(payload.state, roomId), roomId, {
+          incoming: true,
+        });
       });
     } else {
       nextState.rooms[payload.room] = sanitizeRoomState(
         cloneRoom(payload.state, payload.room),
-        payload.room
+        payload.room,
+        { incoming: true }
       );
     }
 
     this.state = {
       rooms: nextState.rooms,
       version: nextState.version + 1,
+      updatedAt: Date.now(),
+    };
+
+    this.broadcast();
+    return this.state;
+  }
+
+  commandTimer(command: TimerCommand) {
+    const state = this.getSnapshot();
+    const targets = command.room === "all" ? ROOM_IDS : [command.room];
+
+    targets.forEach((roomId) => {
+      const room = cloneRoom(state.rooms[roomId], roomId);
+      applyTimerCommand(room, command.target, command.action);
+      state.rooms[roomId] = sanitizeRoomState(room, roomId, { incoming: true });
+    });
+
+    this.state = {
+      rooms: state.rooms,
+      version: state.version + 1,
       updatedAt: Date.now(),
     };
 
@@ -107,6 +136,16 @@ class ScoreboardStore {
     const snapshot = this.getSnapshot();
     this.subscribers.forEach((subscriber) => subscriber(snapshot));
   }
+}
+
+function applyTimerCommand(room: RoomState, target: TimerTarget, action: TimerAction) {
+  if (target === "main") {
+    room.timer = applyTimerAction(room.timer, action);
+    return;
+  }
+
+  const timeoutIndex = target === "timeout-0" ? 0 : 1;
+  room.timeouts[timeoutIndex] = applyTimerAction(room.timeouts[timeoutIndex], action);
 }
 
 declare global {

@@ -1,11 +1,34 @@
 import { getScoreboardStore } from "@/lib/scoreboard-store";
-import type { RoomTarget, ScoreboardPatch } from "@/lib/scoreboard";
+import { createCompetitionFeed } from "@/lib/scoreboard-feed";
+import {
+  ROOM_IDS,
+  isCompetitionId,
+  type RoomId,
+  type RoomTarget,
+  type ScoreboardPatch,
+} from "@/lib/scoreboard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET() {
-  return Response.json(getScoreboardStore().getSnapshot());
+export async function GET(request: Request) {
+  const snapshot = getScoreboardStore().getSnapshot();
+  const searchParams = new URL(request.url).searchParams;
+  const roomParam = searchParams.get("room");
+  const selectedRoom = ROOM_IDS.includes(roomParam as RoomId) ? (roomParam as RoomId) : null;
+  const competitionParam = searchParams.get("competition");
+  const payload = isCompetitionId(competitionParam)
+    ? createCompetitionFeed(snapshot, competitionParam, selectedRoom)
+    : selectedRoom
+      ? snapshot.rooms[selectedRoom]
+      : snapshot;
+
+  return Response.json(payload, {
+    headers: {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
 export async function PATCH(request: Request) {

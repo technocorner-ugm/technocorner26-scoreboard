@@ -16,6 +16,45 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Multimedia Integration
+
+Display URLs:
+
+- `/display/room-1`
+- `/display/room-2`
+
+JSON snapshots:
+
+- `/api/scoreboard?room=room-1`
+- `/api/scoreboard?competition=soccerbot`
+- `/api/scoreboard/competitions/soccerbot`
+- `/api/scoreboard/competitions/soccerbot?room=room-1`
+
+Realtime SSE:
+
+```js
+const source = new EventSource(
+  "https://your-scoreboard.vercel.app/api/scoreboard/events?competition=soccerbot&room=room-1"
+);
+
+source.addEventListener("scoreboard", (event) => {
+  const state = JSON.parse(event.data);
+  console.log(state);
+});
+```
+
+Competition IDs:
+
+- `line-follower`
+- `soccerbot`
+- `soccerbot-penalty`
+- `sumobot-rc`
+- `sumobot-auto`
+- `transporter`
+
+Competition feeds only contain rooms currently running that competition. Public GET and SSE
+responses include CORS headers for multimedia clients hosted on another origin.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

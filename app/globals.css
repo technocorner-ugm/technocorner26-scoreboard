@@ -467,6 +467,7 @@ a {
 }
 
 .team-score {
+  position: relative;
   min-width: 0;
   min-height: 300px;
   display: grid;
@@ -478,6 +479,48 @@ a {
   color: var(--tc-ink);
   padding: 18px;
   text-align: center;
+}
+
+.score-duel.has-series-score .team-score {
+  padding-top: 76px;
+}
+
+.series-score {
+  position: absolute;
+  top: 14px;
+  min-width: 112px;
+  min-height: 46px;
+  display: inline-grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 8px;
+  background: var(--tc-navy);
+  color: var(--tc-white);
+  padding: 7px 10px;
+}
+
+.team-score.team-1 .series-score {
+  right: 14px;
+}
+
+.team-score.team-2 .series-score {
+  left: 14px;
+}
+
+.series-score span {
+  color: var(--tc-yellow);
+  font-size: 0.68rem;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.series-score b {
+  min-width: 30px;
+  font-size: 1.55rem;
+  line-height: 1;
 }
 
 .team-score.team-1 {
@@ -907,6 +950,18 @@ a {
   margin-bottom: 10px;
 }
 
+.score-control.is-series {
+  margin-bottom: 12px;
+}
+
+.score-control.is-series strong {
+  min-height: 44px;
+  border: 2px solid rgba(48, 92, 218, 0.2);
+  background: #eef3ff;
+  color: var(--tc-blue-dark);
+  font-size: 1.65rem;
+}
+
 .score-control.is-total strong {
   color: var(--tc-white);
 }
@@ -1013,6 +1068,7 @@ a {
   height: 100dvh;
   min-height: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr) auto;
   border-radius: 0;
   border: 0;
@@ -1052,6 +1108,29 @@ a {
 
 .display-shell .team-score strong {
   font-size: 10rem;
+}
+
+.display-shell .series-score {
+  top: 20px;
+  min-width: 148px;
+  min-height: 58px;
+  padding: 9px 12px;
+}
+
+.display-shell .team-score.team-1 .series-score {
+  right: 20px;
+}
+
+.display-shell .team-score.team-2 .series-score {
+  left: 20px;
+}
+
+.display-shell .series-score span {
+  font-size: 0.82rem;
+}
+
+.display-shell .series-score b {
+  font-size: 2rem;
 }
 
 .display-shell .stage-clock {
@@ -1180,8 +1259,60 @@ a {
     padding: 14px;
   }
 
+  .display-shell {
+    overflow-y: auto;
+  }
+
+  .display-shell .score-stage {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+    padding: 14px;
+  }
+
+  .display-shell .stage-header,
+  .display-shell .score-duel,
+  .display-shell .stage-footer {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .display-shell .stage-footer {
+    padding-right: 0;
+  }
+
   .team-score {
     min-height: 240px;
+  }
+
+  .score-duel.has-series-score .team-score {
+    padding-top: 72px;
+  }
+
+  .series-score,
+  .display-shell .series-score {
+    top: 10px;
+    min-width: 104px;
+    min-height: 42px;
+    padding: 6px 8px;
+  }
+
+  .team-score.team-1 .series-score,
+  .team-score.team-2 .series-score,
+  .display-shell .team-score.team-1 .series-score,
+  .display-shell .team-score.team-2 .series-score {
+    right: 10px;
+    left: auto;
+  }
+
+  .series-score span,
+  .display-shell .series-score span {
+    font-size: 0.62rem;
+  }
+
+  .series-score b,
+  .display-shell .series-score b {
+    font-size: 1.4rem;
   }
 
   .team-score strong,
@@ -1203,7 +1334,11 @@ a {
   }
 
   .display-switcher {
-    right: 10px;
-    bottom: 10px;
+    position: static;
+    right: auto;
+    bottom: auto;
+    justify-self: stretch;
+    justify-content: center;
+    margin: 12px 14px 14px;
   }
 }

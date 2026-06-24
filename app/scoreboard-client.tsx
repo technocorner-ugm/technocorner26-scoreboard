@@ -21,8 +21,11 @@ import {
 } from "lucide-react";
 import {
   COMPETITIONS,
+  LINE_FOLLOWER_ROUNDS,
   ROOM_IDS,
   ROOM_LABELS,
+  SOCCERBOT_ROUNDS,
+  SUMOBOT_ROUNDS,
   TRANSPORTER_ROUNDS,
   calculatePenaltyScore,
   calculateTransporterScore,
@@ -34,6 +37,7 @@ import {
   getTeamDisplayScore,
   getTransporterRoundConfig,
   hasTimeoutTimers,
+  isSoccerbotBestOfThreeRound,
   isTransporterHeadToHeadRound,
   parseClock,
   resolveTimer,
@@ -57,21 +61,27 @@ import {
 const TEAM_INDEXES = [0, 1] as const;
 type TeamIndex = 0 | 1 | 2 | 3;
 const REGULAR_ROUNDS: Record<CompetitionId, string[]> = {
-  "line-follower": ["Penyisihan", "32 Besar", "16 Besar", "8 Besar", "Final"],
-  soccerbot: ["Babak Penyisihan", "Knockout", "Final"],
+  "line-follower": [...LINE_FOLLOWER_ROUNDS],
+  soccerbot: [...SOCCERBOT_ROUNDS],
   "soccerbot-penalty": ["Penalty"],
-  "sumobot-rc": ["Babak Penyisihan", "Knockout", "Final"],
-  "sumobot-auto": ["Babak Penyisihan", "Knockout", "Final"],
+  "sumobot-rc": [...SUMOBOT_ROUNDS],
+  "sumobot-auto": [...SUMOBOT_ROUNDS],
   transporter: [...TRANSPORTER_ROUNDS],
 };
 
 type ViewMode = "operator" | "display";
 
-export default function ScoreboardClient() {
+export default function ScoreboardClient({
+  initialRoom = "room-1",
+  initialViewMode = "operator",
+}: {
+  initialRoom?: RoomId;
+  initialViewMode?: ViewMode;
+} = {}) {
   const [board, setBoard] = useState<ScoreboardState | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState<RoomId>("room-1");
+  const [selectedRoom, setSelectedRoom] = useState<RoomId>(initialRoom);
   const [applyToAllRooms, setApplyToAllRooms] = useState(false);
-  const [viewMode, setViewMode] = useState<ViewMode>("operator");
+  const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
   const [apiError, setApiError] = useState<string | null>(null);
   const [, setPending] = useState(false);
   const [origin, setOrigin] = useState("");
@@ -299,7 +309,7 @@ export default function ScoreboardClient() {
             {ROOM_IDS.map((roomId) => (
               <a
                 key={roomId}
-                href={`${origin || ""}/?view=display&room=${roomId}`}
+                href={`${origin || ""}/display/${roomId}`}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -337,6 +347,19 @@ export default function ScoreboardClient() {
         <section className="control-panel settings-panel">
           <PanelTitle icon={<Settings2 size={18} />} title="Match Setup" />
           <RoundEditor room={currentRoom} onChange={updateCurrentRoom} />
+          <label className="field-stack">
+            <span>Judul Papan Skor</span>
+            <input
+              value={currentRoom.displayTitle}
+              maxLength={40}
+              onChange={(event) =>
+                updateCurrentRoom((room) => ({
+                  ...room,
+                  displayTitle: event.target.value,
+                }))
+              }
+            />
+          </label>
           <TimerEditor
             label="Timer Utama"
             timer={currentRoom.timer}
@@ -415,6 +438,13 @@ function ScoreboardStage({ room }: { room: RoomState }) {
   const showVersus =
     activeTeamIndexes.length === 2 &&
     (room.competition !== "transporter" || isTransporterHeadToHeadRound(room.round));
+  const showSeriesScore = isSoccerbotBestOfThreeRound(room.competition, room.round);
+  const scoreDuelClassName = [
+    activeTeamIndexes.length === 1 ? "score-duel is-single" : "score-duel",
+    showSeriesScore ? "has-series-score" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   if (room.competition === "line-follower") {
     return <LineFollowerStage room={room} />;
@@ -428,7 +458,7 @@ function ScoreboardStage({ room }: { room: RoomState }) {
           <Image src={competition.asset} alt="" width={64} height={64} />
           <div>
             <p>{ROOM_LABELS[room.room]}</p>
-            <h2>{competition.label}</h2>
+            <h2>{getDisplayTitle(room)}</h2>
           </div>
         </div>
         <div className="stage-round">
@@ -437,9 +467,15 @@ function ScoreboardStage({ room }: { room: RoomState }) {
         </div>
       </header>
 
-      <div className={activeTeamIndexes.length === 1 ? "score-duel is-single" : "score-duel"}>
+      <div className={scoreDuelClassName}>
         {activeTeamIndexes.map((teamIndex) => (
           <article className={`team-score team-${teamIndex + 1}`} key={teamIndex}>
+            {showSeriesScore ? (
+              <div className="series-score" aria-label={`${room.teams[teamIndex].matchWins} match menang`}>
+                <span>Match Menang</span>
+                <b>{room.teams[teamIndex].matchWins}</b>
+              </div>
+            ) : null}
             <label>{getStageTeamLabel(room, teamIndex)}</label>
             <h3>{room.teams[teamIndex].name}</h3>
             <strong>{getTeamDisplayScore(room, teamIndex)}</strong>
@@ -509,19 +545,19 @@ function LineFollowerStage({ room }: { room: RoomState }) {
           <Image src={competition.asset} alt="" width={64} height={64} />
           <div>
             <p>{ROOM_LABELS[room.room]}</p>
-            <h2>{competition.label}</h2>
+            <h2>{getDisplayTitle(room)}</h2>
           </div>
         </div>
         <div className="stage-round">
           <span>{room.round}</span>
-          <b>{room.lineFollowerMode === "quad" ? "2 Match" : "1 Match"}</b>
+          <b>{room.lineFollowerMode === "quad" ? "2 Track" : "1 Track"}</b>
         </div>
       </header>
 
       <div className={room.lineFollowerMode === "quad" ? "lf-match-grid is-quad" : "lf-match-grid"}>
         {matches.map(([leftIndex, rightIndex], matchIndex) => (
           <article className="lf-match" key={matchIndex}>
-            <span>Match {matchIndex + 1}</span>
+            <span>Track {matchIndex + 1}</span>
             <div className="lf-team is-red">
               <small>Merah</small>
               <h3>{room.teams[leftIndex].name}</h3>
@@ -560,6 +596,10 @@ function TeamEditor({
   const isTransporter = room.competition === "transporter";
   const isPenalty = room.competition === "soccerbot-penalty";
   const isLineFollower = room.competition === "line-follower";
+  const isSoccerbotBestOfThree = isSoccerbotBestOfThreeRound(
+    room.competition,
+    room.round
+  );
   const lineFollowerSideClass = isLineFollower
     ? teamIndex % 2 === 0
       ? "is-lf-red"
@@ -595,30 +635,62 @@ function TeamEditor({
       ) : null}
 
       {!isTransporter && !isPenalty && !isLineFollower ? (
-        <div className="score-control">
-          <p>Score</p>
-          <div>
-            <button
-              type="button"
-              aria-label={`Kurangi skor ${team.name}`}
-              onClick={() =>
-                onChange((roomState) => updateTeamScore(roomState, teamIndex as 0 | 1, -1))
-              }
-            >
-              <Minus size={17} />
-            </button>
-            <strong>{team.score}</strong>
-            <button
-              type="button"
-              aria-label={`Tambah skor ${team.name}`}
-              onClick={() =>
-                onChange((roomState) => updateTeamScore(roomState, teamIndex as 0 | 1, 1))
-              }
-            >
-              <Plus size={17} />
-            </button>
+        <>
+          {isSoccerbotBestOfThree ? (
+            <div className="score-control is-series">
+              <p>Match Menang (BO3)</p>
+              <div>
+                <button
+                  type="button"
+                  aria-label={`Kurangi match menang ${team.name}`}
+                  onClick={() =>
+                    onChange((roomState) =>
+                      updateTeamMatchWins(roomState, teamIndex as 0 | 1, -1)
+                    )
+                  }
+                >
+                  <Minus size={17} />
+                </button>
+                <strong>{team.matchWins}</strong>
+                <button
+                  type="button"
+                  aria-label={`Tambah match menang ${team.name}`}
+                  onClick={() =>
+                    onChange((roomState) =>
+                      updateTeamMatchWins(roomState, teamIndex as 0 | 1, 1)
+                    )
+                  }
+                >
+                  <Plus size={17} />
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="score-control">
+            <p>Score</p>
+            <div>
+              <button
+                type="button"
+                aria-label={`Kurangi skor ${team.name}`}
+                onClick={() =>
+                  onChange((roomState) => updateTeamScore(roomState, teamIndex as 0 | 1, -1))
+                }
+              >
+                <Minus size={17} />
+              </button>
+              <strong>{team.score}</strong>
+              <button
+                type="button"
+                aria-label={`Tambah skor ${team.name}`}
+                onClick={() =>
+                  onChange((roomState) => updateTeamScore(roomState, teamIndex as 0 | 1, 1))
+                }
+              >
+                <Plus size={17} />
+              </button>
+            </div>
           </div>
-        </div>
+        </>
       ) : null}
 
       {hasTimeoutTimers(room.competition, room.round) && isPrimaryTeamIndex(teamIndex) ? (
@@ -639,10 +711,10 @@ function TeamEditor({
 function getTeamEditorTitle(room: RoomState, teamIndex: TeamIndex) {
   if (room.competition === "line-follower") {
     return [
-      "Match 1 Merah",
-      "Match 1 Biru",
-      "Match 2 Merah",
-      "Match 2 Biru",
+      "Track 1 Merah",
+      "Track 1 Biru",
+      "Track 2 Merah",
+      "Track 2 Biru",
     ][teamIndex];
   }
 
@@ -1009,10 +1081,15 @@ function getStageTeamLabel(room: RoomState, teamIndex: 0 | 1) {
   return teamIndex === 0 ? "Team Left" : "Team Right";
 }
 
+function getDisplayTitle(room: RoomState) {
+  return room.displayTitle.trim() || getCompetition(room.competition).label;
+}
+
 function changeCompetition(room: RoomState, competitionId: CompetitionId) {
   const competition = getCompetition(competitionId);
   const next = cloneRoom(room);
   next.competition = competition.id;
+  next.displayTitle = competition.label;
   next.round = competition.defaultRound;
   next.timer = createTimer(competition.defaultTimerMs);
   const timeoutMs = hasTimeoutTimers(competition.id, competition.defaultRound)
@@ -1043,6 +1120,13 @@ function updateTeamScore(room: RoomState, teamIndex: 0 | 1, delta: number) {
   return updateTeam(room, teamIndex, (team) => ({
     ...team,
     score: Math.max(0, Math.min(9999, team.score + delta)),
+  }));
+}
+
+function updateTeamMatchWins(room: RoomState, teamIndex: 0 | 1, delta: number) {
+  return updateTeam(room, teamIndex, (team) => ({
+    ...team,
+    matchWins: Math.max(0, Math.min(2, team.matchWins + delta)),
   }));
 }
 

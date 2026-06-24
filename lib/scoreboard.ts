@@ -44,7 +44,7 @@ export const COMPETITIONS = [
     label: "Sumobot RC",
     shortLabel: "RC",
     asset: "/assets/logo/Sumo.webp",
-    defaultRound: "Babak Penyisihan",
+    defaultRound: "Babak Grup",
     defaultTimerMs: 180000,
     defaultTimeoutMs: 45000,
     scoring: "regular",
@@ -54,7 +54,7 @@ export const COMPETITIONS = [
     label: "Sumobot Auto",
     shortLabel: "Auto",
     asset: "/assets/logo/Sumo.webp",
-    defaultRound: "Babak Penyisihan",
+    defaultRound: "Babak Grup",
     defaultTimerMs: 180000,
     defaultTimeoutMs: 45000,
     scoring: "regular",
@@ -79,6 +79,29 @@ export type LineFollowerMode = "dual" | "quad";
 export type PenaltyMark = "empty" | "goal" | "miss";
 export type TimerAction = "start" | "pause" | "reset";
 
+export const LINE_FOLLOWER_ROUNDS = [
+  "Penyisihan",
+  "32 Besar",
+  "16 Besar",
+  "8 Besar",
+  "Final",
+] as const;
+
+export const SOCCERBOT_ROUNDS = [
+  "Babak Penyisihan",
+  "Babak Knockout",
+  "Semifinal",
+  "Bronze Match",
+  "Final",
+] as const;
+
+export const SUMOBOT_ROUNDS = [
+  "Babak Grup",
+  "Babak Penyisihan",
+  "Semifinal",
+  "Final",
+] as const;
+
 export const TRANSPORTER_ROUNDS = [
   "Penyisihan",
   "32 Besar",
@@ -92,8 +115,8 @@ export type TransporterRound = (typeof TRANSPORTER_ROUNDS)[number];
 
 export const TRANSPORTER_ITEMS = [
   { key: "jingga", label: "Jingga", color: "#F7AD19" },
-  { key: "cokelat", label: "Cokelat", color: "#8C5A24" },
-  { key: "biru", label: "Biru", color: "#305CDA" },
+  { key: "cokelat", label: "Pink", color: "#D81B60" },
+  { key: "biru", label: "Biru", color: "#173B8F" },
   { key: "ungu", label: "Ungu", color: "#630894" },
   { key: "kuning", label: "Kuning", color: "#FEE312" },
 ] as const;
@@ -110,6 +133,7 @@ export type TimerState = {
 export type TeamState = {
   name: string;
   score: number;
+  matchWins: number;
   penalty: PenaltyMark[];
   transporter: Record<TransporterItemKey, number>;
   transporterPenalty: boolean;
@@ -118,6 +142,7 @@ export type TeamState = {
 export type RoomState = {
   room: RoomId;
   competition: CompetitionId;
+  displayTitle: string;
   round: string;
   transporterMode: TransporterMode;
   lineFollowerMode: LineFollowerMode;
@@ -151,6 +176,10 @@ export function getCompetition(id: CompetitionId) {
   return COMPETITIONS.find((competition) => competition.id === id) ?? COMPETITIONS[0];
 }
 
+export function isCompetitionId(value: string | null): value is CompetitionId {
+  return COMPETITIONS.some((competition) => competition.id === value);
+}
+
 export function createTimer(durationMs: number): TimerState {
   return {
     durationMs,
@@ -164,6 +193,7 @@ export function createTeam(name: string): TeamState {
   return {
     name,
     score: 0,
+    matchWins: 0,
     penalty: ["empty", "empty", "empty"],
     transporter: {
       jingga: 0,
@@ -182,6 +212,7 @@ export function createRoomState(room: RoomId): RoomState {
   return {
     room,
     competition: competition.id,
+    displayTitle: competition.label,
     round: competition.defaultRound,
     transporterMode: "double",
     lineFollowerMode: "dual",
@@ -322,6 +353,13 @@ export function isTransporterHeadToHeadRound(round: string) {
   return normalizedRound !== "Penyisihan" && normalizedRound !== "32 Besar";
 }
 
+export function isSoccerbotBestOfThreeRound(id: CompetitionId, round: string) {
+  return (
+    id === "soccerbot" &&
+    (round === "Semifinal" || round === "Bronze Match" || round === "Final")
+  );
+}
+
 export function getTransporterRoundConfig(round: string) {
   const normalizedRound = TRANSPORTER_ROUNDS.includes(round as TransporterRound)
     ? (round as TransporterRound)
@@ -424,6 +462,8 @@ export function sanitizeRoomState(
   const competition = getCompetition(room.competition);
   const base = cloneRoom(room, roomId);
   base.competition = competition.id;
+  base.displayTitle =
+    typeof base.displayTitle === "string" ? base.displayTitle.slice(0, 40) : competition.label;
   base.round = base.round.trim() || competition.defaultRound;
   base.transporterMode = base.transporterMode === "single" ? "single" : "double";
   base.lineFollowerMode = base.lineFollowerMode === "quad" ? "quad" : "dual";
@@ -480,11 +520,7 @@ function sanitizeIncomingTimer(timer: TimerState): TimerState {
 function isSumobotGroupRound(round?: string) {
   const normalizedRound = round?.trim().toLowerCase();
 
-  return (
-    normalizedRound === "penyisihan" ||
-    normalizedRound === "babak penyisihan" ||
-    normalizedRound === "babak grup"
-  );
+  return normalizedRound === "babak grup" || normalizedRound === "grup";
 }
 
 function normalizeTeam(team: TeamState, index: 0 | 1 | 2 | 3): TeamState {
@@ -493,6 +529,7 @@ function normalizeTeam(team: TeamState, index: 0 | 1 | 2 | 3): TeamState {
     ...team,
     name: team.name.trim().slice(0, 28) || DEFAULT_TEAM_NAMES[index],
     score: clampScore(team.score),
+    matchWins: clampMatchWins(team.matchWins),
     penalty: normalizePenalty(team.penalty),
     transporter: normalizeTransporter(team.transporter),
     transporterPenalty: Boolean(team.transporterPenalty),
@@ -505,6 +542,14 @@ function clampScore(score: number) {
   }
 
   return Math.max(0, Math.min(9999, Math.round(score)));
+}
+
+function clampMatchWins(score: number) {
+  if (!Number.isFinite(score)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(2, Math.round(score)));
 }
 
 function normalizePenalty(penalty: PenaltyMark[]) {

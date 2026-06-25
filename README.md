@@ -18,15 +18,16 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Multimedia Integration
 
-Display URLs:
+Display URLs (each competition has its own room-1 / room-2):
 
-- `/display/room-1`
-- `/display/room-2`
+- `/display/line-follower/room-1`
+- `/display/soccerbot/room-2`
 
 JSON snapshots:
 
-- `/api/scoreboard?room=room-1`
+- `/api/scoreboard` (full state, all competitions)
 - `/api/scoreboard?competition=soccerbot`
+- `/api/scoreboard?competition=soccerbot&room=room-1`
 - `/api/scoreboard/competitions/soccerbot`
 - `/api/scoreboard/competitions/soccerbot?room=room-1`
 

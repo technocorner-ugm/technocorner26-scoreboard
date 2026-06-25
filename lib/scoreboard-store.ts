@@ -1,8 +1,11 @@
 import {
+  COMPETITION_IDS,
   ROOM_IDS,
+  type CompetitionId,
+  type CompetitionRooms,
   type RoomId,
-  type RoomTarget,
   type RoomState,
+  type RoomTarget,
   type ScoreboardPatch,
   type ScoreboardState,
   type TimerAction,
@@ -10,6 +13,8 @@ import {
   type TimerTarget,
   applyTimerAction,
   cloneRoom,
+  createCompetitionRooms,
+  createRoomState,
   createTimer,
   createScoreboardState,
   normalizeTimer,
@@ -24,31 +29,41 @@ class ScoreboardStore {
 
   getSnapshot() {
     const now = Date.now();
-    const rooms = ROOM_IDS.reduce(
-      (next, roomId) => {
-        const room = sanitizeRoomState(
-          this.state.rooms[roomId] ?? createScoreboardState().rooms[roomId],
-          roomId
+    const competitions = COMPETITION_IDS.reduce(
+      (allCompetitions, competitionId) => {
+        const rooms = ROOM_IDS.reduce(
+          (nextRooms, roomId) => {
+            const source = this.state.competitions?.[competitionId]?.[roomId];
+            const room = sanitizeRoomState(
+              source
+                ? { ...source, competition: competitionId }
+                : createRoomState(competitionId, roomId),
+              roomId
+            );
+
+            nextRooms[roomId] = {
+              ...room,
+              timer: normalizeTimer(room.timer, now),
+              timeouts: [
+                normalizeTimer(room.timeouts?.[0] ?? createTimer(0), now),
+                normalizeTimer(room.timeouts?.[1] ?? createTimer(0), now),
+              ],
+            };
+
+            return nextRooms;
+          },
+          {} as CompetitionRooms
         );
 
-        return {
-          ...next,
-          [roomId]: {
-            ...room,
-            timer: normalizeTimer(room.timer, now),
-            timeouts: [
-              normalizeTimer(room.timeouts?.[0] ?? createTimer(0), now),
-              normalizeTimer(room.timeouts?.[1] ?? createTimer(0), now),
-            ],
-          },
-        };
+        allCompetitions[competitionId] = rooms;
+        return allCompetitions;
       },
-      {} as ScoreboardState["rooms"]
+      {} as Record<CompetitionId, CompetitionRooms>
     );
 
     this.state = {
       ...this.state,
-      rooms,
+      competitions,
       updatedAt: now,
     };
 
@@ -57,23 +72,24 @@ class ScoreboardStore {
 
   patch(payload: ScoreboardPatch) {
     const nextState = this.getSnapshot();
+    const competitionRooms = nextState.competitions[payload.competition];
 
-    if (payload.room === "all") {
-      ROOM_IDS.forEach((roomId) => {
-        nextState.rooms[roomId] = sanitizeRoomState(cloneRoom(payload.state, roomId), roomId, {
-          incoming: true,
-        });
-      });
-    } else {
-      nextState.rooms[payload.room] = sanitizeRoomState(
-        cloneRoom(payload.state, payload.room),
-        payload.room,
+    const applyRoom = (roomId: RoomId) => {
+      competitionRooms[roomId] = sanitizeRoomState(
+        { ...cloneRoom(payload.state, roomId), competition: payload.competition },
+        roomId,
         { incoming: true }
       );
+    };
+
+    if (payload.room === "all") {
+      ROOM_IDS.forEach(applyRoom);
+    } else {
+      applyRoom(payload.room);
     }
 
     this.state = {
-      rooms: nextState.rooms,
+      competitions: nextState.competitions,
       version: nextState.version + 1,
       updatedAt: Date.now(),
     };
@@ -84,16 +100,17 @@ class ScoreboardStore {
 
   commandTimer(command: TimerCommand) {
     const state = this.getSnapshot();
+    const competitionRooms = state.competitions[command.competition];
     const targets = command.room === "all" ? ROOM_IDS : [command.room];
 
     targets.forEach((roomId) => {
-      const room = cloneRoom(state.rooms[roomId], roomId);
+      const room = cloneRoom(competitionRooms[roomId], roomId);
       applyTimerCommand(room, command.target, command.action);
-      state.rooms[roomId] = sanitizeRoomState(room, roomId, { incoming: true });
+      competitionRooms[roomId] = sanitizeRoomState(room, roomId, { incoming: true });
     });
 
     this.state = {
-      rooms: state.rooms,
+      competitions: state.competitions,
       version: state.version + 1,
       updatedAt: Date.now(),
     };
@@ -102,19 +119,18 @@ class ScoreboardStore {
     return this.state;
   }
 
-  reset(target: RoomTarget) {
+  reset(competition: CompetitionId, target: RoomTarget) {
     const state = this.getSnapshot();
+    const fresh = createCompetitionRooms(competition);
 
     if (target === "all") {
-      ROOM_IDS.forEach((roomId) => {
-        state.rooms[roomId] = createScoreboardState().rooms[roomId];
-      });
+      state.competitions[competition] = fresh;
     } else {
-      state.rooms[target] = createScoreboardState().rooms[target as RoomId];
+      state.competitions[competition][target as RoomId] = fresh[target as RoomId];
     }
 
     this.state = {
-      rooms: state.rooms,
+      competitions: state.competitions,
       version: state.version + 1,
       updatedAt: Date.now(),
     };

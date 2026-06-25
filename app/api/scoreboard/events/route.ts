@@ -29,9 +29,7 @@ export async function GET(request: Request) {
       const send = (payload: ScoreboardState) => {
         const eventPayload = selectedCompetition
           ? createCompetitionFeed(payload, selectedCompetition, selectedRoom)
-          : selectedRoom
-            ? payload.rooms[selectedRoom]
-            : payload;
+          : payload;
         controller.enqueue(
           encoder.encode(`event: scoreboard\ndata: ${JSON.stringify(eventPayload)}\n\n`)
         );

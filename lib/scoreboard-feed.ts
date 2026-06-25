@@ -19,11 +19,12 @@ export function createCompetitionFeed(
   selectedRoom: RoomId | null = null
 ): CompetitionFeed {
   const roomIds: readonly RoomId[] = selectedRoom ? [selectedRoom] : ROOM_IDS;
+  const competitionRooms = snapshot.competitions[competition] ?? {};
   const rooms = roomIds.reduce(
     (matchingRooms, roomId) => {
-      const room = snapshot.rooms[roomId];
+      const room = competitionRooms[roomId];
 
-      if (room.competition === competition) {
+      if (room) {
         matchingRooms[roomId] = room;
       }
 

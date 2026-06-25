@@ -19,9 +19,7 @@ export async function GET(request: Request) {
   const competitionParam = searchParams.get("competition");
   const payload = isCompetitionId(competitionParam)
     ? createCompetitionFeed(snapshot, competitionParam, selectedRoom)
-    : selectedRoom
-      ? snapshot.rooms[selectedRoom]
-      : snapshot;
+    : snapshot;
 
   return Response.json(payload, {
     headers: {
@@ -34,7 +32,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const payload = (await request.json()) as ScoreboardPatch;
 
-  if (!payload?.room || !payload?.state) {
+  if (!isCompetitionId(payload?.competition) || !payload?.room || !payload?.state) {
     return Response.json({ message: "Invalid scoreboard payload" }, { status: 400 });
   }
 
@@ -43,7 +41,13 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
+  const competitionParam = searchParams.get("competition");
+
+  if (!isCompetitionId(competitionParam)) {
+    return Response.json({ message: "Competition required" }, { status: 400 });
+  }
+
   const target = (searchParams.get("room") ?? "all") as RoomTarget;
 
-  return Response.json(getScoreboardStore().reset(target));
+  return Response.json(getScoreboardStore().reset(competitionParam, target));
 }

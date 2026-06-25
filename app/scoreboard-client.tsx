@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import {
   COMPETITIONS,
+  COMPETITION_IDS,
   LINE_FOLLOWER_ROUNDS,
   ROOM_IDS,
   ROOM_LABELS,
@@ -72,13 +73,17 @@ const REGULAR_ROUNDS: Record<CompetitionId, string[]> = {
 type ViewMode = "operator" | "display";
 
 export default function ScoreboardClient({
+  initialCompetition = COMPETITION_IDS[0],
   initialRoom = "room-1",
   initialViewMode = "operator",
 }: {
+  initialCompetition?: CompetitionId;
   initialRoom?: RoomId;
   initialViewMode?: ViewMode;
 } = {}) {
   const [board, setBoard] = useState<ScoreboardState | null>(null);
+  const [selectedCompetition, setSelectedCompetition] =
+    useState<CompetitionId>(initialCompetition);
   const [selectedRoom, setSelectedRoom] = useState<RoomId>(initialRoom);
   const [applyToAllRooms, setApplyToAllRooms] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(initialViewMode);
@@ -90,8 +95,13 @@ export default function ScoreboardClient({
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const params = new URLSearchParams(window.location.search);
+      const competitionParam = params.get("competition");
       const roomParam = params.get("room");
       const viewParam = params.get("view");
+
+      if (COMPETITION_IDS.includes(competitionParam as CompetitionId)) {
+        setSelectedCompetition(competitionParam as CompetitionId);
+      }
 
       if (ROOM_IDS.includes(roomParam as RoomId)) {
         setSelectedRoom(roomParam as RoomId);
@@ -164,20 +174,26 @@ export default function ScoreboardClient({
     };
   }, []);
 
-  const currentRoom = board?.rooms[selectedRoom] ?? null;
+  const currentRoom = board?.competitions[selectedCompetition]?.[selectedRoom] ?? null;
   const targetRoom: RoomTarget = applyToAllRooms ? "all" : selectedRoom;
 
   async function commitRoom(nextRoom: RoomState, target: RoomTarget = targetRoom) {
     const committedRoom = prepareRoomForCommit(nextRoom);
     setApiError(null);
     setPending(true);
-    setBoard((previous) => optimisticBoard(previous, target, committedRoom));
+    setBoard((previous) =>
+      optimisticBoard(previous, selectedCompetition, target, committedRoom)
+    );
 
     try {
       const response = await fetch("/api/scoreboard", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ room: target, state: committedRoom }),
+        body: JSON.stringify({
+          competition: selectedCompetition,
+          room: target,
+          state: committedRoom,
+        }),
       });
 
       if (!response.ok) {
@@ -197,7 +213,10 @@ export default function ScoreboardClient({
     setApiError(null);
 
     try {
-      const response = await fetch(`/api/scoreboard?room=${target}`, { method: "DELETE" });
+      const response = await fetch(
+        `/api/scoreboard?competition=${selectedCompetition}&room=${target}`,
+        { method: "DELETE" }
+      );
 
       if (!response.ok) {
         throw new Error("DELETE failed");
@@ -218,6 +237,7 @@ export default function ScoreboardClient({
 
   async function commandTimer(target: TimerTarget, action: TimerAction) {
     const command: TimerCommand = {
+      competition: selectedCompetition,
       room: targetRoom,
       target,
       action,
@@ -309,7 +329,7 @@ export default function ScoreboardClient({
             {ROOM_IDS.map((roomId) => (
               <a
                 key={roomId}
-                href={`${origin || ""}/display/${roomId}`}
+                href={`${origin || ""}/display/${selectedCompetition}/${roomId}`}
                 target="_blank"
                 rel="noreferrer"
               >
@@ -328,10 +348,8 @@ export default function ScoreboardClient({
               <button
                 type="button"
                 key={competition.id}
-                className={currentRoom.competition === competition.id ? "competition-btn is-active" : "competition-btn"}
-                onClick={() =>
-                  updateCurrentRoom((room) => changeCompetition(room, competition.id))
-                }
+                className={selectedCompetition === competition.id ? "competition-btn is-active" : "competition-btn"}
+                onClick={() => setSelectedCompetition(competition.id)}
               >
                 <Image src={competition.asset} alt="" width={42} height={42} />
                 <span>{competition.label}</span>
@@ -1085,25 +1103,6 @@ function getDisplayTitle(room: RoomState) {
   return room.displayTitle.trim() || getCompetition(room.competition).label;
 }
 
-function changeCompetition(room: RoomState, competitionId: CompetitionId) {
-  const competition = getCompetition(competitionId);
-  const next = cloneRoom(room);
-  next.competition = competition.id;
-  next.displayTitle = competition.label;
-  next.round = competition.defaultRound;
-  next.timer = createTimer(competition.defaultTimerMs);
-  const timeoutMs = hasTimeoutTimers(competition.id, competition.defaultRound)
-    ? competition.defaultTimeoutMs
-    : 0;
-  next.timeouts = [createTimer(timeoutMs), createTimer(timeoutMs)];
-
-  if (competition.id === "transporter") {
-    next.timer = createTimer(getTransporterRoundConfig(competition.defaultRound).durationMs);
-  }
-
-  return next;
-}
-
 function updateTeam(
   room: RoomState,
   teamIndex: TeamIndex,
@@ -1176,11 +1175,13 @@ function nextPenaltyMark(mark: PenaltyMark): PenaltyMark {
 
 function optimisticBoard(
   previous: ScoreboardState | null,
+  competition: CompetitionId,
   target: RoomTarget,
   nextRoom: RoomState
 ): ScoreboardState {
   const base = previous ?? createScoreboardState();
-  const rooms = { ...base.rooms };
+  const competitions = { ...base.competitions };
+  const rooms = { ...competitions[competition] };
 
   if (target === "all") {
     ROOM_IDS.forEach((roomId) => {
@@ -1190,8 +1191,10 @@ function optimisticBoard(
     rooms[target] = prepareRoomForCommit(cloneRoom(nextRoom, target));
   }
 
+  competitions[competition] = rooms;
+
   return {
-    rooms,
+    competitions,
     version: base.version + 1,
     updatedAt: Date.now(),
   };
@@ -1222,12 +1225,22 @@ function localizeScoreboardState(state: ScoreboardState) {
 
   return {
     ...state,
-    rooms: ROOM_IDS.reduce(
-      (rooms, roomId) => ({
-        ...rooms,
-        [roomId]: localizeRoomTimers(state.rooms[roomId], serverNow, localNow),
+    competitions: COMPETITION_IDS.reduce(
+      (competitions, competitionId) => ({
+        ...competitions,
+        [competitionId]: ROOM_IDS.reduce(
+          (rooms, roomId) => ({
+            ...rooms,
+            [roomId]: localizeRoomTimers(
+              state.competitions[competitionId][roomId],
+              serverNow,
+              localNow
+            ),
+          }),
+          {} as ScoreboardState["competitions"][CompetitionId]
+        ),
       }),
-      {} as ScoreboardState["rooms"]
+      {} as ScoreboardState["competitions"]
     ),
   };
 }

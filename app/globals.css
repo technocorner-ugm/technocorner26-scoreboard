@@ -278,6 +278,11 @@ a {
   box-shadow: 0 8px 18px rgba(48, 92, 218, 0.24);
 }
 
+.room-selector-stack {
+  display: grid;
+  gap: 8px;
+}
+
 .toggle-line {
   display: flex;
   align-items: center;
@@ -604,7 +609,7 @@ a {
 .lf-match {
   min-height: 280px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 74px minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: auto 1fr;
   align-items: center;
   gap: 14px;
@@ -665,19 +670,6 @@ a {
   font-size: 2rem;
   line-height: 1.2;
   overflow-wrap: anywhere;
-}
-
-.lf-match strong {
-  width: 74px;
-  height: 56px;
-  display: grid;
-  place-items: center;
-  border: 3px solid var(--tc-ink);
-  border-radius: 8px;
-  background: var(--tc-yellow);
-  color: var(--tc-ink);
-  font-size: 1.5rem;
-  font-weight: 900;
 }
 
 .line-follower-footer {
@@ -1244,10 +1236,6 @@ a {
 
   .lf-team {
     min-height: 140px;
-  }
-
-  .lf-match strong {
-    justify-self: center;
   }
 
   .competition-grid {

@@ -20,21 +20,24 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 Display URLs:
 
-- `/display/room-1`
-- `/display/room-2`
+- `/display/gedung-a/room-1`
+- `/display/gedung-a/room-2`
+- `/display/gedung-b/room-1`
+- `/display/gedung-b/room-2`
 
 JSON snapshots:
 
-- `/api/scoreboard?room=room-1`
-- `/api/scoreboard?competition=soccerbot`
+- `/api/scoreboard?venue=gedung-a`
+- `/api/scoreboard?venue=gedung-a&room=room-1`
+- `/api/scoreboard?competition=soccerbot&venue=gedung-a`
 - `/api/scoreboard/competitions/soccerbot`
-- `/api/scoreboard/competitions/soccerbot?room=room-1`
+- `/api/scoreboard/competitions/soccerbot?venue=gedung-a&room=room-1`
 
 Realtime SSE:
 
 ```js
 const source = new EventSource(
-  "https://your-scoreboard.vercel.app/api/scoreboard/events?competition=soccerbot&room=room-1"
+  "https://your-scoreboard.example/api/scoreboard/events?competition=soccerbot&venue=gedung-a&room=room-1"
 );
 
 source.addEventListener("scoreboard", (event) => {
@@ -54,6 +57,9 @@ Competition IDs:
 
 Competition feeds only contain rooms currently running that competition. Public GET and SSE
 responses include CORS headers for multimedia clients hosted on another origin.
+
+Venue IDs are `gedung-a` and `gedung-b`. Each venue has independent `room-1` and
+`room-2` state, so identical room numbers in different buildings do not overwrite each other.
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

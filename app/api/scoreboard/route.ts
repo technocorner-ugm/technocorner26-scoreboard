@@ -1,9 +1,9 @@
 import { getScoreboardStore } from "@/lib/scoreboard-store";
-import { createCompetitionFeed } from "@/lib/scoreboard-feed";
+import { createCompetitionFeed, createVenueFeed } from "@/lib/scoreboard-feed";
 import {
-  ROOM_IDS,
   isCompetitionId,
-  type RoomId,
+  isVenueId,
+  resolveRoomId,
   type RoomTarget,
   type ScoreboardPatch,
 } from "@/lib/scoreboard";
@@ -15,13 +15,21 @@ export async function GET(request: Request) {
   const snapshot = getScoreboardStore().getSnapshot();
   const searchParams = new URL(request.url).searchParams;
   const roomParam = searchParams.get("room");
-  const selectedRoom = ROOM_IDS.includes(roomParam as RoomId) ? (roomParam as RoomId) : null;
+  const venueParam = searchParams.get("venue");
+  const selectedRoom = resolveRoomId(roomParam, venueParam);
+  const selectedVenue = isVenueId(venueParam)
+    ? venueParam
+    : isVenueId(roomParam)
+      ? roomParam
+      : null;
   const competitionParam = searchParams.get("competition");
   const payload = isCompetitionId(competitionParam)
-    ? createCompetitionFeed(snapshot, competitionParam, selectedRoom)
+    ? createCompetitionFeed(snapshot, competitionParam, selectedRoom, selectedVenue)
     : selectedRoom
       ? snapshot.rooms[selectedRoom]
-      : snapshot;
+      : selectedVenue
+        ? createVenueFeed(snapshot, selectedVenue)
+        : snapshot;
 
   return Response.json(payload, {
     headers: {
@@ -43,7 +51,11 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
-  const target = (searchParams.get("room") ?? "all") as RoomTarget;
+  const roomParam = searchParams.get("room");
+  const venueParam = searchParams.get("venue");
+  const target = (resolveRoomId(roomParam, venueParam) ??
+    (isVenueId(roomParam) ? roomParam : null) ??
+    (isVenueId(venueParam) ? venueParam : "all")) as RoomTarget;
 
   return Response.json(getScoreboardStore().reset(target));
 }

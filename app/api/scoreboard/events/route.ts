@@ -1,10 +1,10 @@
 import { getScoreboardStore } from "@/lib/scoreboard-store";
-import { createCompetitionFeed } from "@/lib/scoreboard-feed";
+import { createCompetitionFeed, createVenueFeed } from "@/lib/scoreboard-feed";
 import {
-  ROOM_IDS,
   isCompetitionId,
+  isVenueId,
+  resolveRoomId,
   type CompetitionId,
-  type RoomId,
   type ScoreboardState,
 } from "@/lib/scoreboard";
 
@@ -13,11 +13,16 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const encoder = new TextEncoder();
-  const roomParam = new URL(request.url).searchParams.get("room");
-  const selectedRoom = ROOM_IDS.includes(roomParam as RoomId)
-    ? (roomParam as RoomId)
-    : null;
-  const competitionParam = new URL(request.url).searchParams.get("competition");
+  const searchParams = new URL(request.url).searchParams;
+  const roomParam = searchParams.get("room");
+  const venueParam = searchParams.get("venue");
+  const selectedRoom = resolveRoomId(roomParam, venueParam);
+  const selectedVenue = isVenueId(venueParam)
+    ? venueParam
+    : isVenueId(roomParam)
+      ? roomParam
+      : null;
+  const competitionParam = searchParams.get("competition");
   const selectedCompetition = isCompetitionId(competitionParam)
     ? (competitionParam as CompetitionId)
     : null;
@@ -28,10 +33,17 @@ export async function GET(request: Request) {
     start(controller) {
       const send = (payload: ScoreboardState) => {
         const eventPayload = selectedCompetition
-          ? createCompetitionFeed(payload, selectedCompetition, selectedRoom)
+          ? createCompetitionFeed(
+              payload,
+              selectedCompetition,
+              selectedRoom,
+              selectedVenue
+            )
           : selectedRoom
             ? payload.rooms[selectedRoom]
-            : payload;
+            : selectedVenue
+              ? createVenueFeed(payload, selectedVenue)
+              : payload;
         controller.enqueue(
           encoder.encode(`event: scoreboard\ndata: ${JSON.stringify(eventPayload)}\n\n`)
         );

@@ -1,5 +1,7 @@
 import {
   ROOM_IDS,
+  getVenueRoomIds,
+  isVenueId,
   type RoomId,
   type RoomTarget,
   type RoomState,
@@ -57,20 +59,13 @@ class ScoreboardStore {
 
   patch(payload: ScoreboardPatch) {
     const nextState = this.getSnapshot();
+    const targets = getTargetRoomIds(payload.room);
 
-    if (payload.room === "all") {
-      ROOM_IDS.forEach((roomId) => {
-        nextState.rooms[roomId] = sanitizeRoomState(cloneRoom(payload.state, roomId), roomId, {
-          incoming: true,
-        });
+    targets.forEach((roomId) => {
+      nextState.rooms[roomId] = sanitizeRoomState(cloneRoom(payload.state, roomId), roomId, {
+        incoming: true,
       });
-    } else {
-      nextState.rooms[payload.room] = sanitizeRoomState(
-        cloneRoom(payload.state, payload.room),
-        payload.room,
-        { incoming: true }
-      );
-    }
+    });
 
     this.state = {
       rooms: nextState.rooms,
@@ -84,7 +79,7 @@ class ScoreboardStore {
 
   commandTimer(command: TimerCommand) {
     const state = this.getSnapshot();
-    const targets = command.room === "all" ? ROOM_IDS : [command.room];
+    const targets = getTargetRoomIds(command.room);
 
     targets.forEach((roomId) => {
       const room = cloneRoom(state.rooms[roomId], roomId);
@@ -104,14 +99,11 @@ class ScoreboardStore {
 
   reset(target: RoomTarget) {
     const state = this.getSnapshot();
+    const targets = getTargetRoomIds(target);
 
-    if (target === "all") {
-      ROOM_IDS.forEach((roomId) => {
-        state.rooms[roomId] = createScoreboardState().rooms[roomId];
-      });
-    } else {
-      state.rooms[target] = createScoreboardState().rooms[target as RoomId];
-    }
+    targets.forEach((roomId) => {
+      state.rooms[roomId] = createScoreboardState().rooms[roomId];
+    });
 
     this.state = {
       rooms: state.rooms,
@@ -145,7 +137,24 @@ function applyTimerCommand(room: RoomState, target: TimerTarget, action: TimerAc
   }
 
   const timeoutIndex = target === "timeout-0" ? 0 : 1;
+
+  if (action === "start") {
+    room.timer = applyTimerAction(room.timer, "pause");
+  }
+
   room.timeouts[timeoutIndex] = applyTimerAction(room.timeouts[timeoutIndex], action);
+}
+
+function getTargetRoomIds(target: RoomTarget): readonly RoomId[] {
+  if (target === "all") {
+    return ROOM_IDS;
+  }
+
+  if (isVenueId(target)) {
+    return getVenueRoomIds(target);
+  }
+
+  return [target];
 }
 
 declare global {

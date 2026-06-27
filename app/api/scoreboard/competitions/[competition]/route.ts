@@ -1,9 +1,9 @@
 import { getScoreboardStore } from "@/lib/scoreboard-store";
 import { createCompetitionFeed } from "@/lib/scoreboard-feed";
 import {
-  ROOM_IDS,
   isCompetitionId,
-  type RoomId,
+  isVenueId,
+  resolveRoomId,
 } from "@/lib/scoreboard";
 
 export const dynamic = "force-dynamic";
@@ -25,12 +25,20 @@ export async function GET(
     );
   }
 
-  const roomParam = new URL(request.url).searchParams.get("room");
-  const selectedRoom = ROOM_IDS.includes(roomParam as RoomId) ? (roomParam as RoomId) : null;
+  const searchParams = new URL(request.url).searchParams;
+  const roomParam = searchParams.get("room");
+  const venueParam = searchParams.get("venue");
+  const selectedRoom = resolveRoomId(roomParam, venueParam);
+  const selectedVenue = isVenueId(venueParam)
+    ? venueParam
+    : isVenueId(roomParam)
+      ? roomParam
+      : null;
   const payload = createCompetitionFeed(
     getScoreboardStore().getSnapshot(),
     competition,
-    selectedRoom
+    selectedRoom,
+    selectedVenue
   );
 
   return Response.json(payload, {

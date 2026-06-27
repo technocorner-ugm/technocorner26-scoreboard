@@ -1,11 +1,48 @@
-export const ROOM_IDS = ["room-1", "room-2"] as const;
+export const VENUE_IDS = ["gedung-a", "gedung-b"] as const;
+export const LOCAL_ROOM_IDS = ["room-1", "room-2"] as const;
+export const ROOM_IDS = [
+  "gedung-a-room-1",
+  "gedung-a-room-2",
+  "gedung-b-room-1",
+  "gedung-b-room-2",
+] as const;
 
+export type VenueId = (typeof VENUE_IDS)[number];
+export type LocalRoomId = (typeof LOCAL_ROOM_IDS)[number];
 export type RoomId = (typeof ROOM_IDS)[number];
-export type RoomTarget = RoomId | "all";
+export type RoomTarget = RoomId | VenueId | "all";
+
+export const VENUE_LABELS: Record<VenueId, string> = {
+  "gedung-a": "Gedung A",
+  "gedung-b": "Gedung B",
+};
 
 export const ROOM_LABELS: Record<RoomId, string> = {
-  "room-1": "Room 1",
-  "room-2": "Room 2",
+  "gedung-a-room-1": "Room 1",
+  "gedung-a-room-2": "Room 2",
+  "gedung-b-room-1": "Room 1",
+  "gedung-b-room-2": "Room 2",
+};
+
+export const ROOM_SHORT_LABELS: Record<RoomId, string> = {
+  "gedung-a-room-1": "A1",
+  "gedung-a-room-2": "A2",
+  "gedung-b-room-1": "B1",
+  "gedung-b-room-2": "B2",
+};
+
+export const ROOM_VENUES: Record<RoomId, VenueId> = {
+  "gedung-a-room-1": "gedung-a",
+  "gedung-a-room-2": "gedung-a",
+  "gedung-b-room-1": "gedung-b",
+  "gedung-b-room-2": "gedung-b",
+};
+
+export const ROOM_LOCAL_IDS: Record<RoomId, LocalRoomId> = {
+  "gedung-a-room-1": "room-1",
+  "gedung-a-room-2": "room-2",
+  "gedung-b-room-1": "room-1",
+  "gedung-b-room-2": "room-2",
 };
 
 export const COMPETITIONS = [
@@ -141,6 +178,8 @@ export type TeamState = {
 
 export type RoomState = {
   room: RoomId;
+  venue: VenueId;
+  localRoom: LocalRoomId;
   competition: CompetitionId;
   displayTitle: string;
   round: string;
@@ -180,6 +219,42 @@ export function isCompetitionId(value: string | null): value is CompetitionId {
   return COMPETITIONS.some((competition) => competition.id === value);
 }
 
+export function isVenueId(value: string | null): value is VenueId {
+  return VENUE_IDS.includes(value as VenueId);
+}
+
+export function isLocalRoomId(value: string | null): value is LocalRoomId {
+  return LOCAL_ROOM_IDS.includes(value as LocalRoomId);
+}
+
+export function isRoomId(value: string | null): value is RoomId {
+  return ROOM_IDS.includes(value as RoomId);
+}
+
+export function getRoomId(venue: VenueId, room: LocalRoomId): RoomId {
+  return `${venue}-${room}` as RoomId;
+}
+
+export function getVenueRoomIds(venue: VenueId): readonly RoomId[] {
+  return ROOM_IDS.filter((roomId) => ROOM_VENUES[roomId] === venue);
+}
+
+export function getRoomDisplayLabel(room: RoomId) {
+  return `${VENUE_LABELS[ROOM_VENUES[room]]} · ${ROOM_LABELS[room]}`;
+}
+
+export function resolveRoomId(room: string | null, venue: string | null): RoomId | null {
+  if (isRoomId(room)) {
+    return room;
+  }
+
+  if (isLocalRoomId(room)) {
+    return getRoomId(isVenueId(venue) ? venue : "gedung-a", room);
+  }
+
+  return null;
+}
+
 export function createTimer(durationMs: number): TimerState {
   return {
     durationMs,
@@ -211,6 +286,8 @@ export function createRoomState(room: RoomId): RoomState {
 
   return {
     room,
+    venue: ROOM_VENUES[room],
+    localRoom: ROOM_LOCAL_IDS[room],
     competition: competition.id,
     displayTitle: competition.label,
     round: competition.defaultRound,
@@ -233,8 +310,10 @@ export function createRoomState(room: RoomId): RoomState {
 export function createScoreboardState(): ScoreboardState {
   return {
     rooms: {
-      "room-1": createRoomState("room-1"),
-      "room-2": createRoomState("room-2"),
+      "gedung-a-room-1": createRoomState("gedung-a-room-1"),
+      "gedung-a-room-2": createRoomState("gedung-a-room-2"),
+      "gedung-b-room-1": createRoomState("gedung-b-room-1"),
+      "gedung-b-room-2": createRoomState("gedung-b-room-2"),
     },
     version: 1,
     updatedAt: Date.now(),
@@ -260,6 +339,8 @@ export function cloneRoom(room: RoomState, nextRoomId: RoomId = room.room): Room
   return {
     ...room,
     room: nextRoomId,
+    venue: ROOM_VENUES[nextRoomId],
+    localRoom: ROOM_LOCAL_IDS[nextRoomId],
     lineFollowerMode: room.lineFollowerMode === "quad" ? "quad" : "dual",
     teams,
     timer: { ...(room.timer ?? createTimer(0)) },
@@ -411,7 +492,6 @@ export function calculateTransporterScore(team: TeamState, round: string) {
 export function calculatePenaltyScore(team: TeamState) {
   return team.penalty.reduce((total, mark) => {
     if (mark === "goal") return total + 1;
-    if (mark === "miss") return total - 1;
     return total;
   }, 0);
 }

@@ -22,11 +22,16 @@ import {
 import {
   COMPETITIONS,
   LINE_FOLLOWER_ROUNDS,
+  LOCAL_ROOM_IDS,
   ROOM_IDS,
-  ROOM_LABELS,
+  ROOM_LOCAL_IDS,
+  ROOM_SHORT_LABELS,
+  ROOM_VENUES,
   SOCCERBOT_ROUNDS,
   SUMOBOT_ROUNDS,
   TRANSPORTER_ROUNDS,
+  VENUE_IDS,
+  VENUE_LABELS,
   calculatePenaltyScore,
   calculateTransporterScore,
   cloneRoom,
@@ -34,16 +39,22 @@ import {
   createTimer,
   formatClock,
   getCompetition,
+  getRoomDisplayLabel,
+  getRoomId,
   getTeamDisplayScore,
   getTransporterRoundConfig,
+  getVenueRoomIds,
   hasTimeoutTimers,
   isSoccerbotBestOfThreeRound,
   isTransporterHeadToHeadRound,
+  isVenueId,
   parseClock,
+  resolveRoomId,
   resolveTimer,
   setTimerDuration,
   type CompetitionId,
   type LineFollowerMode,
+  type LocalRoomId,
   type PenaltyMark,
   type RoomId,
   type RoomState,
@@ -56,6 +67,7 @@ import {
   type TimerTarget,
   type TransporterItemKey,
   type TransporterMode,
+  type VenueId,
 } from "@/lib/scoreboard";
 
 const TEAM_INDEXES = [0, 1] as const;
@@ -72,7 +84,7 @@ const REGULAR_ROUNDS: Record<CompetitionId, string[]> = {
 type ViewMode = "operator" | "display";
 
 export default function ScoreboardClient({
-  initialRoom = "room-1",
+  initialRoom = "gedung-a-room-1",
   initialViewMode = "operator",
 }: {
   initialRoom?: RoomId;
@@ -91,10 +103,12 @@ export default function ScoreboardClient({
     const frame = window.requestAnimationFrame(() => {
       const params = new URLSearchParams(window.location.search);
       const roomParam = params.get("room");
+      const venueParam = params.get("venue");
       const viewParam = params.get("view");
+      const resolvedRoom = resolveRoomId(roomParam, venueParam);
 
-      if (ROOM_IDS.includes(roomParam as RoomId)) {
-        setSelectedRoom(roomParam as RoomId);
+      if (resolvedRoom) {
+        setSelectedRoom(resolvedRoom);
       }
 
       if (viewParam === "display") {
@@ -165,7 +179,10 @@ export default function ScoreboardClient({
   }, []);
 
   const currentRoom = board?.rooms[selectedRoom] ?? null;
-  const targetRoom: RoomTarget = applyToAllRooms ? "all" : selectedRoom;
+  const selectedVenue = ROOM_VENUES[selectedRoom];
+  const selectedLocalRoom = ROOM_LOCAL_IDS[selectedRoom];
+  const venueRoomIds = getVenueRoomIds(selectedVenue);
+  const targetRoom: RoomTarget = applyToAllRooms ? selectedVenue : selectedRoom;
 
   async function commitRoom(nextRoom: RoomState, target: RoomTarget = targetRoom) {
     const committedRoom = prepareRoomForCommit(nextRoom);
@@ -260,8 +277,10 @@ export default function ScoreboardClient({
               key={roomId}
               className={roomId === selectedRoom ? "is-active" : ""}
               onClick={() => setSelectedRoom(roomId)}
+              aria-label={getRoomDisplayLabel(roomId)}
+              title={getRoomDisplayLabel(roomId)}
             >
-              {ROOM_LABELS[roomId]}
+              {ROOM_SHORT_LABELS[roomId]}
             </button>
           ))}
         </div>
@@ -283,15 +302,29 @@ export default function ScoreboardClient({
 
       <section className="operator-grid">
         <aside className="control-panel room-panel">
-          <PanelTitle icon={<RadioTower size={18} />} title="Room" />
-          <SegmentedControl
-            value={selectedRoom}
-            options={ROOM_IDS.map((roomId) => ({
-              value: roomId,
-              label: ROOM_LABELS[roomId],
-            }))}
-            onChange={(value) => setSelectedRoom(value as RoomId)}
-          />
+          <PanelTitle icon={<RadioTower size={18} />} title="Lokasi & Room" />
+          <div className="room-selector-stack">
+            <SegmentedControl
+              value={selectedVenue}
+              options={VENUE_IDS.map((venue) => ({
+                value: venue,
+                label: VENUE_LABELS[venue],
+              }))}
+              onChange={(value) =>
+                setSelectedRoom(getRoomId(value as VenueId, selectedLocalRoom))
+              }
+            />
+            <SegmentedControl
+              value={selectedLocalRoom}
+              options={LOCAL_ROOM_IDS.map((room) => ({
+                value: room,
+                label: room === "room-1" ? "Room 1" : "Room 2",
+              }))}
+              onChange={(value) =>
+                setSelectedRoom(getRoomId(selectedVenue, value as LocalRoomId))
+              }
+            />
+          </div>
 
           <label className="toggle-line">
             <input
@@ -301,20 +334,20 @@ export default function ScoreboardClient({
             />
             <span>
               <Users size={16} />
-              Update ke semua room
+              Update semua room di {VENUE_LABELS[selectedVenue]}
             </span>
           </label>
 
           <div className="display-link-grid">
-            {ROOM_IDS.map((roomId) => (
+            {venueRoomIds.map((roomId) => (
               <a
                 key={roomId}
-                href={`${origin || ""}/display/${roomId}`}
+                href={`${origin || ""}/display/${ROOM_VENUES[roomId]}/${ROOM_LOCAL_IDS[roomId]}`}
                 target="_blank"
                 rel="noreferrer"
               >
                 <MonitorUp size={15} />
-                Display {ROOM_LABELS[roomId]}
+                Display {getRoomDisplayLabel(roomId)}
                 <ArrowUpRight size={14} />
               </a>
             ))}
@@ -407,7 +440,10 @@ export default function ScoreboardClient({
 
           <button type="button" className="danger-action" onClick={() => resetRooms()}>
             <RotateCcw size={16} />
-            Reset {applyToAllRooms ? "Semua Room" : ROOM_LABELS[selectedRoom]}
+            Reset{" "}
+            {applyToAllRooms
+              ? `Semua Room ${VENUE_LABELS[selectedVenue]}`
+              : getRoomDisplayLabel(selectedRoom)}
           </button>
         </section>
 
@@ -451,13 +487,13 @@ function ScoreboardStage({ room }: { room: RoomState }) {
   }
 
   return (
-    <section className="score-stage" aria-label={`${ROOM_LABELS[room.room]} scoreboard`}>
+    <section className="score-stage" aria-label={`${getRoomDisplayLabel(room.room)} scoreboard`}>
       <div className="stage-backdrop" />
       <header className="stage-header">
         <div className="stage-title">
           <Image src={competition.asset} alt="" width={64} height={64} />
           <div>
-            <p>{ROOM_LABELS[room.room]}</p>
+            <p>{getRoomDisplayLabel(room.room)}</p>
             <h2>{getDisplayTitle(room)}</h2>
           </div>
         </div>
@@ -538,13 +574,13 @@ function LineFollowerStage({ room }: { room: RoomState }) {
   const matches = room.lineFollowerMode === "quad" ? [[0, 1], [2, 3]] : [[0, 1]];
 
   return (
-    <section className="score-stage line-follower-stage" aria-label={`${ROOM_LABELS[room.room]} line follower`}>
+    <section className="score-stage line-follower-stage" aria-label={`${getRoomDisplayLabel(room.room)} line follower`}>
       <div className="stage-backdrop" />
       <header className="stage-header">
         <div className="stage-title">
           <Image src={competition.asset} alt="" width={64} height={64} />
           <div>
-            <p>{ROOM_LABELS[room.room]}</p>
+            <p>{getRoomDisplayLabel(room.room)}</p>
             <h2>{getDisplayTitle(room)}</h2>
           </div>
         </div>
@@ -562,7 +598,6 @@ function LineFollowerStage({ room }: { room: RoomState }) {
               <small>Merah</small>
               <h3>{room.teams[leftIndex].name}</h3>
             </div>
-            <strong>VS</strong>
             <div className="lf-team is-blue">
               <small>Biru</small>
               <h3>{room.teams[rightIndex].name}</h3>
@@ -1181,14 +1216,16 @@ function optimisticBoard(
 ): ScoreboardState {
   const base = previous ?? createScoreboardState();
   const rooms = { ...base.rooms };
+  const targetRoomIds =
+    target === "all"
+      ? ROOM_IDS
+      : isVenueId(target)
+        ? getVenueRoomIds(target)
+        : [target];
 
-  if (target === "all") {
-    ROOM_IDS.forEach((roomId) => {
-      rooms[roomId] = prepareRoomForCommit(cloneRoom(nextRoom, roomId));
-    });
-  } else {
-    rooms[target] = prepareRoomForCommit(cloneRoom(nextRoom, target));
-  }
+  targetRoomIds.forEach((roomId) => {
+    rooms[roomId] = prepareRoomForCommit(cloneRoom(nextRoom, roomId));
+  });
 
   return {
     rooms,

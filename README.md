@@ -62,8 +62,8 @@ Competition IDs:
 - `sumobot-auto`
 - `transporter`
 
-Competition feeds only contain rooms currently running that competition. Public GET and SSE
-responses include CORS headers for multimedia clients hosted on another origin.
+Competition feeds contain only the requested competition and can be filtered by venue or room.
+Public GET and SSE responses include CORS headers for multimedia clients hosted on another origin.
 
 Venue IDs are `gedung-a` and `gedung-b`. Each venue has independent `room-1` and
 `room-2` state, so identical room numbers in different buildings do not overwrite each other.

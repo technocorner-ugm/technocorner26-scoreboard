@@ -2,8 +2,10 @@ import { notFound } from "next/navigation";
 
 import ScoreboardClient from "@/app/scoreboard-client";
 import {
+  COMPETITIONS,
   LOCAL_ROOM_IDS,
   VENUE_IDS,
+  isCompetitionId,
   resolveRoomId,
 } from "@/lib/scoreboard";
 
@@ -16,8 +18,15 @@ export function generateStaticParams() {
       segments: [venue, room],
     }))
   );
+  const competitionVenueRooms = COMPETITIONS.flatMap((competition) =>
+    VENUE_IDS.flatMap((venue) =>
+      LOCAL_ROOM_IDS.map((room) => ({
+        segments: [competition.id, venue, room],
+      }))
+    )
+  );
 
-  return [...legacyRooms, ...venueRooms];
+  return [...legacyRooms, ...venueRooms, ...competitionVenueRooms];
 }
 
 export default async function DisplayRoomPage({
@@ -26,17 +35,31 @@ export default async function DisplayRoomPage({
   params: Promise<{ segments: string[] }>;
 }) {
   const { segments } = await params;
-  const [firstSegment, secondSegment] = segments;
-  const resolvedRoom =
-    segments.length === 1
-      ? resolveRoomId(firstSegment, "gedung-a")
-      : segments.length === 2
-        ? resolveRoomId(secondSegment, firstSegment)
-        : null;
+  const [firstSegment, secondSegment, thirdSegment] = segments;
+  const initialCompetition = isCompetitionId(firstSegment)
+    ? firstSegment
+    : COMPETITIONS[0].id;
+  let resolvedRoom = null;
+
+  if (segments.length === 1) {
+    resolvedRoom = resolveRoomId(firstSegment, "gedung-a");
+  } else if (segments.length === 2) {
+    resolvedRoom = isCompetitionId(firstSegment)
+      ? resolveRoomId(secondSegment, "gedung-a")
+      : resolveRoomId(secondSegment, firstSegment);
+  } else if (segments.length === 3 && isCompetitionId(firstSegment)) {
+    resolvedRoom = resolveRoomId(thirdSegment, secondSegment);
+  }
 
   if (!resolvedRoom) {
     notFound();
   }
 
-  return <ScoreboardClient initialRoom={resolvedRoom} initialViewMode="display" />;
+  return (
+    <ScoreboardClient
+      initialCompetition={initialCompetition}
+      initialRoom={resolvedRoom}
+      initialViewMode="display"
+    />
+  );
 }

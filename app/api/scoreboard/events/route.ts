@@ -1,5 +1,9 @@
 import { getScoreboardStore } from "@/lib/scoreboard-store";
-import { createCompetitionFeed, createVenueFeed } from "@/lib/scoreboard-feed";
+import {
+  createCompetitionFeed,
+  createRoomFeed,
+  createVenueFeed,
+} from "@/lib/scoreboard-feed";
 import {
   isCompetitionId,
   isVenueId,
@@ -40,7 +44,7 @@ export async function GET(request: Request) {
               selectedVenue
             )
           : selectedRoom
-            ? payload.rooms[selectedRoom]
+            ? createRoomFeed(payload, selectedRoom)
             : selectedVenue
               ? createVenueFeed(payload, selectedVenue)
               : payload;

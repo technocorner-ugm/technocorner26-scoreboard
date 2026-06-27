@@ -1,5 +1,9 @@
 import { getScoreboardStore } from "@/lib/scoreboard-store";
-import { createCompetitionFeed, createVenueFeed } from "@/lib/scoreboard-feed";
+import {
+  createCompetitionFeed,
+  createRoomFeed,
+  createVenueFeed,
+} from "@/lib/scoreboard-feed";
 import {
   isCompetitionId,
   isVenueId,
@@ -26,7 +30,7 @@ export async function GET(request: Request) {
   const payload = isCompetitionId(competitionParam)
     ? createCompetitionFeed(snapshot, competitionParam, selectedRoom, selectedVenue)
     : selectedRoom
-      ? snapshot.rooms[selectedRoom]
+      ? createRoomFeed(snapshot, selectedRoom)
       : selectedVenue
         ? createVenueFeed(snapshot, selectedVenue)
         : snapshot;
@@ -42,7 +46,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   const payload = (await request.json()) as ScoreboardPatch;
 
-  if (!payload?.room || !payload?.state) {
+  if (!isCompetitionId(payload?.competition) || !payload?.room || !payload?.state) {
     return Response.json({ message: "Invalid scoreboard payload" }, { status: 400 });
   }
 
@@ -51,11 +55,17 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   const { searchParams } = new URL(request.url);
+  const competitionParam = searchParams.get("competition");
+
+  if (!isCompetitionId(competitionParam)) {
+    return Response.json({ message: "Competition required" }, { status: 400 });
+  }
+
   const roomParam = searchParams.get("room");
   const venueParam = searchParams.get("venue");
   const target = (resolveRoomId(roomParam, venueParam) ??
     (isVenueId(roomParam) ? roomParam : null) ??
     (isVenueId(venueParam) ? venueParam : "all")) as RoomTarget;
 
-  return Response.json(getScoreboardStore().reset(target));
+  return Response.json(getScoreboardStore().reset(competitionParam, target));
 }

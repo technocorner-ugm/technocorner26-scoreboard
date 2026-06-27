@@ -18,18 +18,25 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Multimedia Integration
 
-Display URLs:
+Display URLs (each competition has its own room-1 / room-2):
+
+- `/display/soccerbot/gedung-a/room-1`
+- `/display/soccerbot/gedung-a/room-2`
+- `/display/line-follower/gedung-b/room-1`
+- `/display/line-follower/gedung-b/room-2`
+
+Legacy URLs without a competition still work and default to Line Follower:
 
 - `/display/gedung-a/room-1`
-- `/display/gedung-a/room-2`
-- `/display/gedung-b/room-1`
-- `/display/gedung-b/room-2`
+- `/display/room-1` (defaults to Gedung A)
 
 JSON snapshots:
 
+- `/api/scoreboard` (full state, all competitions and venues)
 - `/api/scoreboard?venue=gedung-a`
 - `/api/scoreboard?venue=gedung-a&room=room-1`
 - `/api/scoreboard?competition=soccerbot&venue=gedung-a`
+- `/api/scoreboard?competition=soccerbot`
 - `/api/scoreboard/competitions/soccerbot`
 - `/api/scoreboard/competitions/soccerbot?venue=gedung-a&room=room-1`
 

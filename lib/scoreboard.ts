@@ -111,6 +111,10 @@ export const COMPETITIONS = [
 export type CompetitionId = (typeof COMPETITIONS)[number]["id"];
 export type ScoringKind = (typeof COMPETITIONS)[number]["scoring"];
 
+export const COMPETITION_IDS = COMPETITIONS.map(
+  (competition) => competition.id
+) as CompetitionId[];
+
 export type TransporterMode = "single" | "double";
 export type LineFollowerMode = "dual" | "quad";
 export type PenaltyMark = "empty" | "goal" | "miss";
@@ -190,13 +194,16 @@ export type RoomState = {
   timeouts: [TimerState, TimerState];
 };
 
+export type CompetitionRooms = Record<RoomId, RoomState>;
+
 export type ScoreboardState = {
-  rooms: Record<RoomId, RoomState>;
+  competitions: Record<CompetitionId, CompetitionRooms>;
   version: number;
   updatedAt: number;
 };
 
 export type ScoreboardPatch = {
+  competition: CompetitionId;
   room: RoomTarget;
   state: RoomState;
 };
@@ -204,6 +211,7 @@ export type ScoreboardPatch = {
 export type TimerTarget = "main" | "timeout-0" | "timeout-1";
 
 export type TimerCommand = {
+  competition: CompetitionId;
   room: RoomTarget;
   target: TimerTarget;
   action: TimerAction;
@@ -281,8 +289,8 @@ export function createTeam(name: string): TeamState {
   };
 }
 
-export function createRoomState(room: RoomId): RoomState {
-  const competition = getCompetition("line-follower");
+export function createRoomState(competitionId: CompetitionId, room: RoomId): RoomState {
+  const competition = getCompetition(competitionId);
 
   return {
     room,
@@ -307,14 +315,23 @@ export function createRoomState(room: RoomId): RoomState {
   };
 }
 
-export function createScoreboardState(): ScoreboardState {
+export function createCompetitionRooms(competitionId: CompetitionId): CompetitionRooms {
   return {
-    rooms: {
-      "gedung-a-room-1": createRoomState("gedung-a-room-1"),
-      "gedung-a-room-2": createRoomState("gedung-a-room-2"),
-      "gedung-b-room-1": createRoomState("gedung-b-room-1"),
-      "gedung-b-room-2": createRoomState("gedung-b-room-2"),
-    },
+    "gedung-a-room-1": createRoomState(competitionId, "gedung-a-room-1"),
+    "gedung-a-room-2": createRoomState(competitionId, "gedung-a-room-2"),
+    "gedung-b-room-1": createRoomState(competitionId, "gedung-b-room-1"),
+    "gedung-b-room-2": createRoomState(competitionId, "gedung-b-room-2"),
+  };
+}
+
+export function createScoreboardState(): ScoreboardState {
+  const competitions = COMPETITION_IDS.reduce((acc, competitionId) => {
+    acc[competitionId] = createCompetitionRooms(competitionId);
+    return acc;
+  }, {} as Record<CompetitionId, CompetitionRooms>);
+
+  return {
+    competitions,
     version: 1,
     updatedAt: Date.now(),
   };
